@@ -44,6 +44,18 @@ public class RequestInterceptor {
     apiHeaderIgnoreMap.put("/v1/course/create", var);
     apiHeaderIgnoreMap.put("/v2/user/courses/list", var);
     apiHeaderIgnoreMap.put("/v1/collection/summary", var);
+    apiHeaderIgnoreMap.put("/v1/event/attendance/webhook", var);
+    apiHeaderIgnoreMap.put("/v1/event/recording/webhook", var);
+    apiHeaderIgnoreMap.put("/v1/course/batch/create", var);
+    apiHeaderIgnoreMap.put("/v1/event/enroll", var);
+    apiHeaderIgnoreMap.put("/v1/event/unenroll", var);
+    apiHeaderIgnoreMap.put("/v1/event/participants/list", var);
+    apiHeaderIgnoreMap.put("/v1/batch/participants/list", var);
+    apiHeaderIgnoreMap.put("/v1/course/enroll", var);
+    apiHeaderIgnoreMap.put("/v1/event/attendance/read", var);
+    apiHeaderIgnoreMap.put("/v1/user/event/list", var);
+    apiHeaderIgnoreMap.put("/v1/event/summary", var);
+    apiHeaderIgnoreMap.put("/v1/course/summary", var);
   }
 
   /**
