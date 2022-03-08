@@ -149,9 +149,16 @@ class CourseEnrolmentActor @Inject()(@Named("course-batch-notification-actor") c
     def list(request: Request): Unit = {
         val userId = request.get(JsonKey.USER_ID).asInstanceOf[String]
         logger.info(request.getRequestContext,"CourseEnrolmentActor :: list :: UserId = " + userId)
-        val response = if (isCacheEnabled && request.getContext.get("cache").asInstanceOf[Boolean])
-            getCachedEnrolmentList(userId, () => getEnrolmentList(request, userId)) else getEnrolmentList(request, userId)
-        sender().tell(response, self)
+        try{
+            val response = if (isCacheEnabled && request.getContext.get("cache").asInstanceOf[Boolean])
+                getCachedEnrolmentList(userId, () => getEnrolmentList(request, userId)) else getEnrolmentList(request, userId)
+            sender().tell(response, self)
+        }catch {
+            case e: Exception =>
+                logger.error(request.getRequestContext, "Exception in enrolment list : user ::" + userId + "| Exception is:"+e.getMessage, e)
+                throw e
+        }
+
     }
 
     def getActiveEnrollments(userId: String, requestContext: RequestContext): java.util.List[java.util.Map[String, AnyRef]] = {
@@ -159,18 +166,10 @@ class CourseEnrolmentActor @Inject()(@Named("course-batch-notification-actor") c
         logger.info(requestContext,"CourseEnrolmentActor :: getActiveEnrollments :: enrolments = " + enrolments)
         if (CollectionUtils.isNotEmpty(enrolments)) {
             val activeEnrolments = enrolments.filter(e => e.getOrDefault(JsonKey.ACTIVE, false.asInstanceOf[AnyRef]).asInstanceOf[Boolean])
+            val sortedEnrolment = activeEnrolments.filter(ae => ae.get(JsonKey.COURSE_ENROLL_DATE)!=null).toList.sortBy(_.get(JsonKey.COURSE_ENROLL_DATE).asInstanceOf[Date])(Ordering[Date].reverse).toList
+            val finalEnrolments = sortedEnrolment ++ activeEnrolments.filter(e => e.get(JsonKey.COURSE_ENROLL_DATE)==null).toList
+            finalEnrolments.take(Integer.parseInt(ProjectUtil.getConfigValue("enrollment_list_size"))).toList.asJava
 
-            activeEnrolments.sort(new Comparator[util.Map[String, AnyRef]] {
-                override def compare(map1: util.Map[String, AnyRef], map2: util.Map[String, AnyRef]): Int = {
-                    if (null != map1.get(JsonKey.COURSE_ENROLL_DATE) && null != map2.get(JsonKey.COURSE_ENROLL_DATE)) {
-                        map2.get(JsonKey.COURSE_ENROLL_DATE).asInstanceOf[Date].compareTo(map1.get(JsonKey.COURSE_ENROLL_DATE).asInstanceOf[Date])
-                    } else {
-                        1
-                    }
-                }
-            })
-
-            activeEnrolments.take(Integer.parseInt(ProjectUtil.getConfigValue("enrollment_list_size"))).toList.asJava
         } else {
             new util.ArrayList[java.util.Map[String, AnyRef]]()
         }
@@ -370,7 +369,10 @@ class CourseEnrolmentActor @Inject()(@Named("course-batch-notification-actor") c
 
     def getEnrolmentList(request: Request, userId: String): Response = {
         logger.info(request.getRequestContext,"CourseEnrolmentActor :: getCachedEnrolmentList :: fetching data from cassandra with userId " + userId)
+
         val activeEnrolments: java.util.List[java.util.Map[String, AnyRef]] = getActiveEnrollments( userId, request.getRequestContext)
+        logger.info(request.getRequestContext,"CourseEnrolmentActor :: list size :: "+activeEnrolments.size()+" :: UserId = " + userId)
+
         val enrolments: java.util.List[java.util.Map[String, AnyRef]] = {
             if (CollectionUtils.isNotEmpty(activeEnrolments)) {
               val courseIds: java.util.List[String] = activeEnrolments.map(e => e.getOrDefault(JsonKey.COURSE_ID, "").asInstanceOf[String]).distinct.filter(id => StringUtils.isNotBlank(id)).toList.asJava
@@ -381,8 +383,9 @@ class CourseEnrolmentActor @Inject()(@Named("course-batch-notification-actor") c
             } else new java.util.ArrayList[java.util.Map[String, AnyRef]]()
         }
         val resp: Response = new Response()
-        val sortedEnrolment = enrolments.asScala.toList.sortBy(_.get("lastContentAccessTime").asInstanceOf[Date]!=null).reverse.toList
-        resp.put(JsonKey.COURSES, sortedEnrolment.asJava)
+        val sortedEnrolment = enrolments.filter(ae => ae.get("lastContentAccessTime")!=null).toList.sortBy(_.get("lastContentAccessTime").asInstanceOf[Date])(Ordering[Date].reverse).toList
+        val finalEnrolments = sortedEnrolment ++ enrolments.asScala.filter(e => e.get("lastContentAccessTime")==null).toList
+        resp.put(JsonKey.COURSES, finalEnrolments.asJava)
         resp
     }
     // TODO: to be removed once all are in scala.
